@@ -24,25 +24,28 @@ namespace BaiduAI
 {
     public partial class Form1 : Form
     {
-        // 百度AI平台的认证信息
+        // 百度AI平台认证信息，APPID,APIKEY,SECRETKEY
         private string APP_ID = "119152692";
         private string API_KEY = "gP0E0dHFocgWacyDJSVZ1xxI";
         private string SECRET_KEY = "QUoeQ7xfFvH3Cibfzmrhg0QDfPjJYfIL";
 
-        private Face client = null;                                     // 百度人脸识别客户端
-        private bool IsStart = false;                                   // 视频帧处理启动标志
-        private FaceLocation location = null;                           // 检测到的人脸位置信息
-        private FilterInfoCollection videoDevices = null;               // 视频设备集合
-        private VideoCaptureDevice videoSource;                         // 视频捕获设备
-        private CancellationTokenSource _cancellationTokenSource;       // 异步任务取消令牌
+        private Face client = null;           // 百度人脸识别客户端
+        private bool IsStart = false;         // 视频帧处理启动标志
+        private FaceLocation location = null;  // 检测到的人脸位置信息
+        private FilterInfoCollection videoDevices = null;  // 视频设备集合
+        private VideoCaptureDevice videoSource; // 视频捕获设备
+        private CancellationTokenSource _cancellationTokenSource; // 异步任务取消令牌
 
         public Form1()
         {
             InitializeComponent();
-            axWindowsMediaPlayer1.uiMode = "Invisible";     // 隐藏媒体播放器UI
-            client = new Face(API_KEY, SECRET_KEY);         // 初始化人脸识别客户端
+            axWindowsMediaPlayer1.uiMode = "Invisible";  // 隐藏媒体播放器UI
+            client = new Face(API_KEY, SECRET_KEY);     // 初始化人脸识别客户端
         }
 
+        /// <summary>
+        /// 将图片转换为Base64字符串（用于API调用）
+        /// </summary>
         public string ConvertImageToBase64(Image file)
         {
             if (file == null) return null;
@@ -61,9 +64,11 @@ namespace BaiduAI
                 return null;
             }
         }
-        // 单张人脸检测（从文件选择）
+
+        // 单张人脸检测按钮
         private void button1_Click(object sender, EventArgs e)
         {
+            // 打开文件对话框选择图片
             OpenFileDialog dialog = new OpenFileDialog
             {
                 InitialDirectory = AppDomain.CurrentDomain.BaseDirectory,
@@ -77,6 +82,7 @@ namespace BaiduAI
                 string filename = dialog.FileName;
                 try
                 {
+                    // 图片处理和人脸检测
                     Image im = Image.FromFile(filename);
                     string image = ConvertImageToBase64(im);
                     string imageType = "BASE64";
@@ -87,8 +93,9 @@ namespace BaiduAI
                         {"face_fields", "age,qualities,beauty"}
                     };
 
+                    // 调用百度人脸检测API
                     var result = client.Detect(image, imageType, options);
-                    textBox1.Text = result.ToString();
+                    textBox1.Text = result.ToString();  // 显示检测结果
                 }
                 catch (Exception ex)
                 {
@@ -97,14 +104,18 @@ namespace BaiduAI
             }
         }
 
+        /// <summary>
+        /// 读取图片文件并转换为Base64
+        /// </summary>
         public string ReadImg(string img)
         {
             return Convert.ToBase64String(File.ReadAllBytes(img));
         }
-        
-        //两张人脸对比
+
+        // 人脸对比按钮
         private void button2_Click(object sender, EventArgs e)
         {
+            // 验证是否已选择两张图片
             if (string.IsNullOrEmpty(textBox2.Text) || string.IsNullOrEmpty(textBox3.Text))
             {
                 MessageBox.Show("请选择要对比的人脸图片");
@@ -115,6 +126,7 @@ namespace BaiduAI
                 string path1 = textBox2.Text;
                 string path2 = textBox3.Text;
 
+                // 构建人脸对比请求
                 var faces = new JArray
                 {
                     new JObject
@@ -135,13 +147,14 @@ namespace BaiduAI
                     }
                  };
 
+                // 调用人脸对比API
                 var result = client.Match(faces);
-                textBox1.Text = result.ToString();
+                textBox1.Text = result.ToString();  // 显示对比结果
             }
             catch (Exception ex) { }
         }
 
-        // 选择人脸对比图片
+        // 选择图片按钮
         private void button3_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog
@@ -154,6 +167,7 @@ namespace BaiduAI
 
             if (dialog.ShowDialog() == DialogResult.OK)
             {
+                // 将选择的图片路径填入文本框
                 if (string.IsNullOrEmpty(textBox2.Text))
                     textBox2.Text = dialog.FileName;
                 else
@@ -161,10 +175,12 @@ namespace BaiduAI
             }
         }
 
+        // 窗体加载初始化
         private void Form1_Load(object sender, EventArgs e)
         {
             _cancellationTokenSource = new CancellationTokenSource();
 
+            // 枚举所有视频输入设备
             videoDevices = new FilterInfoCollection(FilterCategory.VideoInputDevice);
             if (videoDevices != null && videoDevices.Count > 0)
             {
@@ -173,28 +189,33 @@ namespace BaiduAI
                 comboBox1.SelectedIndex = 0;
             }
 
+            // 注册视频帧回调事件
             videoSourcePlayer1.NewFrame += VideoSourcePlayer1_NewFrame;
 
+            // 启动后台线程处理视频帧
             ThreadPool.QueueUserWorkItem(state => {
                 while (!_cancellationTokenSource.Token.IsCancellationRequested)
                 {
                     IsStart = true;
-                    try { Task.Delay(500, _cancellationTokenSource.Token).Wait(); }
+                    try { Task.Delay(500, _cancellationTokenSource.Token).Wait(); }  // 每500ms处理一帧
                     catch (OperationCanceledException) { break; }
                 }
             });
         }
 
+        // 视频帧处理回调（核心渲染逻辑）
         private void VideoSourcePlayer1_NewFrame(object sender, ref Bitmap image)
         {
             try
             {
+                // 触发人脸检测任务（500ms间隔）
                 if (IsStart)
                 {
                     IsStart = false;
                     //ThreadPool.QueueUserWorkItem(new WaitCallback(this.Detect), image.Clone());
                 }
 
+                // 在检测到的人脸位置绘制矩形框
                 if (location != null)
                 {
                     try
@@ -218,7 +239,7 @@ namespace BaiduAI
             }
         }
 
-        // 摄像头连接方法
+        // 连接摄像头
         private void CameraConn()
         {
             if (comboBox1.Items.Count <= 0)
@@ -227,16 +248,20 @@ namespace BaiduAI
                 return;
             }
 
+            // 配置摄像头参数
             videoSource = new VideoCaptureDevice(videoDevices[comboBox1.SelectedIndex].MonikerString);
-            videoSource.DesiredFrameSize = new System.Drawing.Size(320, 240);
-            videoSource.DesiredFrameRate = 1;
+            videoSource.DesiredFrameSize = new System.Drawing.Size(320, 240);  // 设置分辨率
+            videoSource.DesiredFrameRate = 1;  // 设置帧率
 
+            // 启动视频流
             videoSourcePlayer1.VideoSource = videoSource;
             videoSourcePlayer1.Start();
         }
 
+        // 刷新设备列表按钮
         private void button6_Click(object sender, EventArgs e)
         {
+            // 重新枚举视频设备
             videoDevices = new FilterInfoCollection(FilterCategory.VideoInputDevice);
             if (videoDevices != null && videoDevices.Count > 0)
             {
@@ -247,14 +272,9 @@ namespace BaiduAI
             }
         }
 
+        // 拍照并分析按钮（核心功能）
         private void button5_Click(object sender, EventArgs e)
         {
-            // 1. 获取当前视频帧
-            // 2. 调整图片尺寸（最大800x600）
-            // 3. 保存图片到本地PersonImg目录
-            // 4. 调用人脸检测API
-            // 5. 解析并显示年龄/美颜度
-            // 6. 在界面更新人脸位置信息
             if (comboBox1.Items.Count <= 0)
             {
                 MessageBox.Show("请插入视频设备");
@@ -262,8 +282,10 @@ namespace BaiduAI
             }
             try
             {
+                // 确保视频流正在运行
                 if (videoSourcePlayer1.IsRunning)
                 {
+                    // 获取当前视频帧
                     Bitmap currentFrame = videoSourcePlayer1.GetCurrentVideoFrame();
                     if (currentFrame == null)
                     {
@@ -276,6 +298,7 @@ namespace BaiduAI
 
                     try
                     {
+                        // 调整图片尺寸（最大800x600）
                         int maxWidth = 800, maxHeight = 600;
                         double ratioX = (double)maxWidth / currentFrame.Width;
                         double ratioY = (double)maxHeight / currentFrame.Height;
@@ -290,11 +313,13 @@ namespace BaiduAI
                             g.DrawImage(currentFrame, 0, 0, newWidth, newHeight);
                         }
 
+                        // 保存图片到本地
                         if (File.Exists(picName)) File.Delete(picName);
                         resizedFrame.Save(picName, ImageFormat.Jpeg);
 
                         try
                         {
+                            // 人脸检测分析
                             Image imageForDetect = resizedFrame;
                             string imageBase64 = ConvertImageToBase64(imageForDetect);
                             string imageType = "BASE64";
@@ -302,6 +327,7 @@ namespace BaiduAI
                             var options = new Dictionary<string, object> { { "face_field", "age,beauty" } };
                             var result = client.Detect(imageBase64, imageType, options);
 
+                            // 解析检测结果
                             if (result["error_code"].Value<int>() == 0 &&
                                 result["result"] != null &&
                                 result["result"]["face_list"] != null &&
@@ -311,6 +337,7 @@ namespace BaiduAI
                                 string age = faceInfo["age"].ToString();
                                 string beauty = faceInfo["beauty"].ToString();
 
+                                // 更新人脸位置信息（用于绘制框）
                                 this.location = new FaceLocation
                                 {
                                     left = (int)faceInfo["location"]["left"],
@@ -319,6 +346,7 @@ namespace BaiduAI
                                     height = (int)faceInfo["location"]["height"]
                                 };
 
+                                // 更新UI显示
                                 ageText.Text = age;
                                 textBox4.Text = beauty;
                                 MessageBox.Show($"图片已成功保存至：\n{picName}\n\n人脸信息：\n年龄：{age}\n美颜度：{beauty}",
@@ -339,6 +367,7 @@ namespace BaiduAI
                     }
                     finally
                     {
+                        // 释放资源
                         if (resizedFrame != null) resizedFrame.Dispose();
                         if (currentFrame != null) currentFrame.Dispose();
                     }
@@ -351,6 +380,9 @@ namespace BaiduAI
             }
         }
 
+        /// <summary>
+        /// 获取图片存储路径（创建PersonImg目录）
+        /// </summary>
         private string GetImagePath()
         {
             string personImgPath = Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory) + "\\PersonImg";
@@ -358,11 +390,15 @@ namespace BaiduAI
             return personImgPath;
         }
 
+        // 启动摄像头按钮
         private void button4_Click(object sender, EventArgs e)
         {
             CameraConn();
         }
 
+        /// <summary>
+        /// 位图转字节数组（用于API调用）
+        /// </summary>
         public byte[] Bitmap2Byte(Bitmap bitmap)
         {
             try
@@ -401,22 +437,18 @@ namespace BaiduAI
             return null;
         }
 
+        /// <summary>
+        /// 人脸检测核心方法（异步执行）
+        /// </summary>
         public void Detect(object image)
         {
-            // 1. 调整图片尺寸（最大400x300）
-            // 2. 转换为Base64格式
-            // 3. 调用人脸检测API
-            // 4. 解析返回结果：
-            //    - 年龄
-            //    - 人脸质量（模糊度、遮挡等）
-            //    - 美颜度
-            // 5. 在UI线程更新显示结果
             if (image != null && image is Bitmap)
             {
                 Bitmap img = (Bitmap)image;
                 Bitmap smallerImg = null;
                 try
                 {
+                    // 调整图片尺寸（最大400x300）
                     int maxWidth = 400, maxHeight = 300;
                     double ratioX = (double)maxWidth / img.Width;
                     double ratioY = (double)maxHeight / img.Height;
@@ -437,6 +469,7 @@ namespace BaiduAI
                         smallerImg = new Bitmap(img);
                     }
 
+                    // 转换为Base64并调用API
                     var imgByte = Bitmap2Byte(smallerImg);
                     string image1 = ConvertImageToBase64(smallerImg);
                     string imageType = "BASE64";
@@ -452,12 +485,15 @@ namespace BaiduAI
                         var result = client.Detect(image1, imageType, options);
                         FaceDetectInfo detect = JsonHelper.DeserializeObject<FaceDetectInfo>(result.ToString());
 
+                        // 在UI线程更新结果
                         this.Invoke((MethodInvoker)delegate {
                             if (detect != null && detect.result_num > 0)
                             {
+                                // 显示年龄
                                 ageText.Text = detect.result[0].age.TryToString();
                                 this.location = detect.result[0].location;
 
+                                // 构建人脸质量报告
                                 StringBuilder sb = new StringBuilder();
                                 if (detect.result[0].qualities != null)
                                 {
@@ -488,30 +524,30 @@ namespace BaiduAI
                 }
                 finally
                 {
+                    // 释放资源
                     if (smallerImg != null) smallerImg.Dispose();
                     if (img != null && img != image) img.Dispose();
                 }
             }
         }
 
+        // 窗体关闭事件：资源清理
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
+            // 取消后台任务
             _cancellationTokenSource?.Cancel();
+            // 停止视频流
             if (videoSource != null && videoSource.IsRunning) videoSource.Stop();
             Thread.Sleep(100);
-            System.Environment.Exit(0);
+            System.Environment.Exit(0);  // 安全退出
         }
 
-        // 人脸注册
+        // 人脸注册按钮（添加到用户组）
         private void button7_Click(object sender, EventArgs e)
         {
-            // 1. 获取用户ID和组ID
-            // 2. 捕获当前视频帧
-            // 3. 调用百度人脸注册API
-            // 4. 显示注册结果
-            string uid = "1";
-            string userInfo = textBox6.Text.Trim();
-            string groupId = textBox5.Text.Trim();
+            string uid = "1";  // 用户ID
+            string userInfo = textBox6.Text.Trim();  // 用户信息
+            string groupId = textBox5.Text.Trim();   // 用户组ID
 
             if (comboBox1.Items.Count <= 0)
             {
@@ -522,6 +558,7 @@ namespace BaiduAI
             {
                 if (videoSourcePlayer1.IsRunning)
                 {
+                    // 捕获当前视频帧
                     BitmapSource bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
                         videoSourcePlayer1.GetCurrentVideoFrame().GetHbitmap(),
                         IntPtr.Zero,
@@ -531,6 +568,7 @@ namespace BaiduAI
                     var img = BitmapSource2Byte(bitmapSource);
 
                     var options = new Dictionary<string, object> { { "action_type", "REPLACE" } };
+                    // 调用人脸注册API
                     var result = client.UserAdd(Convert.ToBase64String(img), "BASE64", groupId, uid, options);
 
                     if (result.Value<int>("error_code") == 0)
@@ -545,10 +583,10 @@ namespace BaiduAI
             }
         }
 
-        //人脸登录
+        // 人脸登录/识别按钮（核心功能）
         private void button8_Click(object sender, EventArgs e)
         {
-            string groupId = textBox5.Text.Trim();
+            string groupId = textBox5.Text.Trim();  // 用户组ID
             if (string.IsNullOrEmpty(groupId))
             {
                 MessageBox.Show("请输入用户组ID", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -565,6 +603,7 @@ namespace BaiduAI
             {
                 if (videoSourcePlayer1.IsRunning)
                 {
+                    // 捕获当前视频帧
                     BitmapSource bitmapSource = Imaging.CreateBitmapSourceFromHBitmap(
                         videoSourcePlayer1.GetCurrentVideoFrame().GetHbitmap(),
                         IntPtr.Zero,
@@ -574,16 +613,18 @@ namespace BaiduAI
                     var img = BitmapSource2Byte(bitmapSource);
                     var options = new Dictionary<string, object>
                     {
-                        {"match_threshold", 70},
-                        {"quality_control", "NORMAL"},
-                        {"liveness_control", "LOW"},
-                        {"max_user_num", 3}
+                        {"match_threshold", 70},     // 相似度阈值(70%)
+                        {"quality_control", "NORMAL"},// 质量控制级别
+                        {"liveness_control", "LOW"}, // 活体控制级别
+                        {"max_user_num", 3}          // 最多返回3个匹配结果
                     };
 
+                    // 调用人脸搜索API
                     var image = Convert.ToBase64String(img);
                     var imageType = "BASE64";
                     var result = client.Search(image, imageType, groupId, options);
 
+                    // 处理识别结果
                     if (result.Value<int>("error_code") == 0)
                     {
                         if (result["result"] != null &&
@@ -591,9 +632,10 @@ namespace BaiduAI
                             result["result"]["user_list"].Count() > 0)
                         {
                             JArray array = result["result"].Value<JArray>("user_list");
-                            textBox7.Text = array[0].Value<string>("user_id");
-                            double score = array[0].Value<double>("score");
+                            textBox7.Text = array[0].Value<string>("user_id");  // 显示用户ID
+                            double score = array[0].Value<double>("score");      // 获取相似度
 
+                            // 播放欢迎语音
                             axWindowsMediaPlayer1.URL = "20230522_160638_1.mp3";
                             axWindowsMediaPlayer1.Ctlcontrols.play();
 
@@ -619,14 +661,19 @@ namespace BaiduAI
             }
         }
 
+        // 停止摄像头按钮
         private void button9_Click(object sender, EventArgs e)
         {
+            // 停止音频播放
             axWindowsMediaPlayer1.Ctlcontrols.stop();
             if (videoDevices == null || videoDevices.Count == 0) return;
+
+            // 停止视频流
             videoSource.Stop();
             videoSourcePlayer1.Stop();
         }
 
+        // UI元素事件处理（空实现）
         private void ageText_TextChanged(object sender, EventArgs e) { }
         private void textBox4_TextChanged(object sender, EventArgs e) { }
     }
